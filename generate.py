@@ -4,17 +4,22 @@ import matplotlib.pyplot as plt
 from model import DiffusionModel
 from config import *
 
-def denormalize(x):
-    return (x + 1) / 2 * 255
+def scale_up(x):
+    # Scale from [-1, 1] to [0, 255]
+    x = (x + 1) / 2 * 255
+
+    return x
 
 model = DiffusionModel(NUM_TIMESTEPS)
 model.load_state_dict(torch.load(MODEL_STATE_DICT_PATH))
 
-#fig, (ax1, ax2) = plt.subplots(1, 2)
+x0, results = model.sample(1)
 
-x0 = model.sample(1)
+x0 = scale_up(x0)
+results = [scale_up(result) for result in results]
 
-x0 = denormalize(x0)
-x0 = x0.reshape(28, 28)
-plt.imshow(x0, cmap = 'gray')
+fig, axes = plt.subplots(5, 10)
+for i, axis in enumerate(axes.flat):
+    axis.imshow(results[i].reshape(28, 28), cmap = 'gray')
+
 plt.show()
