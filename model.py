@@ -10,7 +10,7 @@ class DiffusionModel(nn.Module):
     def __init__(self, num_timesteps):
         super().__init__()
         self.num_timesteps = num_timesteps
-        self.betas = torch.linspace(0.0001, 0.02, num_timesteps, dtype = torch.float32)
+        self.betas = torch.linspace(0.0001, 0.02, num_timesteps, dtype = torch.float32).to("cuda")
         self.alphas = 1 - self.betas
         self.alpha_bars = torch.cumprod(self.alphas, dim = 0, dtype = torch.float32)
         self.sigma = torch.sqrt(self.betas)
@@ -117,7 +117,7 @@ class DiffusionModel(nn.Module):
         t = random.randint(1, NUM_TIMESTEPS)
 
         # epsilon: (N, 1, 784)
-        epsilon = torch.randn(batch_size, 1, 784, dtype = torch.float32)
+        epsilon = torch.randn(batch_size, 1, 784, dtype = torch.float32).to("cuda")
 
         # true_noise: (N, 1, 784)
         true_noise = (1 - self.alpha_bars[t - 1]) * epsilon
@@ -130,7 +130,7 @@ class DiffusionModel(nn.Module):
     
     def sinusoidal_embedding(self, t):
         # embedding_vector: (784, )
-        embedding_vector = torch.tensor([math.sin(t / 10000 ** (i / 784)) if i % 2 == 0 else math.cos(t / 10000 ** (i / 784)) for i in range(784)], dtype = torch.float32)
+        embedding_vector = torch.tensor([math.sin(t / 10000 ** (i / 784)) if i % 2 == 0 else math.cos(t / 10000 ** (i / 784)) for i in range(784)], dtype = torch.float32).to("cuda")
 
         embedding_vector = embedding_vector.reshape(1, 784)
         # embedding_vector: (1, 784)
@@ -174,14 +174,14 @@ class DiffusionModel(nn.Module):
             self.eval()
 
             # xt: (N, 1, 784)
-            xt = torch.randn((num_samples, 1, 784), dtype = torch.float32)
+            xt = torch.randn((num_samples, 1, 784), dtype = torch.float32).to("cuda")
             denoising_process = []
 
             for t in range(NUM_TIMESTEPS, 0, -1):
                 xt = xt.reshape(-1, 1, 784)
 
                 # z: (N, 1, 784)
-                z = torch.randn((num_samples, 1, 784)) if t > 1 else torch.zeros((num_samples, 1, 784), dtype = torch.float32)
+                z = torch.randn((num_samples, 1, 784)).to("cuda") if t > 1 else torch.zeros((num_samples, 1, 784), dtype = torch.float32).to("cuda")
 
                 # time_embedded_xt: (N, 1, 784)
                 time_embedded_xt = xt + self.sinusoidal_embedding(t)
