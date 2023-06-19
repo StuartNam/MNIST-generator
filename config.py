@@ -8,3 +8,6 @@ NUM_TIMESTEPS = 100
 NUM_EPOCHS = 300
 BATCH_SIZE = 128
 LEARNING_RATE = 1e-3
+
+# General configuration
+RESULT_PATH = "result/"
