@@ -5,5 +5,5 @@ def scale_up(x):
     return x
 
 def scale_down(x):
-    # Scale pixel values down to [-1, 1]
+    # Scale from [0, 255] to [-1, 1]
     return 2 * x / 255 - 1

@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 
+import matplotlib.pyplot as plt
+
 import math
 import random
 import numpy as np
@@ -112,29 +114,35 @@ class DiffusionModel(nn.Module):
 
         
     def noise_sample(self, x0):
-        # x0: (N, 1, 784)
-        batch_size = x0.shape[0]
-        
-        # t: scalar
-        t = random.randint(1, NUM_TIMESTEPS)
+        self.eval()
+        with torch.no_grad():
+            # x0: (N, 1, 784)
+            batch_size = x0.shape[0]
+            
+            # t: int
+            t = random.randint(1, NUM_TIMESTEPS)
 
-        # epsilon: (N, 1, 784)
-        epsilon = torch.randn(batch_size, 1, 784, dtype = torch.float32).to(device)
+            # epsilon: (N, 1, 784)
+            epsilon = torch.randn(batch_size, 1, 784, dtype = torch.float32).to(device)
 
-        # true_noise: (N, 1, 784)
-        true_noise = (1 - self.alpha_bars[t - 1]) * epsilon
-        xt = torch.sqrt(self.alpha_bars[t - 1]) * x0 + true_noise
+            # true_noise: (N, 1, 784)
+            noise = (1 - self.alpha_bars[t - 1]) * epsilon
+            xt = torch.sqrt(self.alpha_bars[t - 1]) * x0 + noise
 
         # xt        : (N, 1, 784)
-        # true_noise: (N, 1, 784)
-        # t         : scalar
-        return xt, true_noise, t
+        # noise     : (N, 1, 784)
+        # t         : int
+        return xt, noise, t
     
     def sinusoidal_embedding(self, t):
-        # embedding_vector: (784, )
-        embedding_vector = torch.tensor([math.sin(t / 10000 ** (i / 784)) if i % 2 == 0 else math.cos(t / 10000 ** (i / 784)) for i in range(784)], dtype = torch.float32).to(device)
+        self.eval()
+        with torch.no_grad():
+            # embedding_vector: (784, )
+            embedding_vector = torch.tensor([math.sin(t / 10000 ** (i / 784)) if i % 2 == 0 else math.cos(t / 10000 ** (i / 784)) for i in range(784)], dtype = torch.float32).to(device)
 
-        embedding_vector = embedding_vector.reshape(1, 784)
+            # embedding_vector: (1, 784)
+            embedding_vector = embedding_vector.reshape(1, 784)
+
         # embedding_vector: (1, 784)
         return embedding_vector
     
@@ -169,6 +177,7 @@ class DiffusionModel(nn.Module):
 
         noise = self.conv4(noise)
 
+        # noise: (N, 1, 28, 28)
         return noise
 
     def sample(self, num_samples):
@@ -178,21 +187,30 @@ class DiffusionModel(nn.Module):
             # xt: (N, 1, 784)
             xt = torch.randn((num_samples, 1, 784), dtype = torch.float32).to(device)
             denoising_process = []
+            noises_predicted = []
 
             for t in range(NUM_TIMESTEPS, 0, -1):
+                # xt: (N, 1, 784)
                 xt = xt.reshape(-1, 1, 784)
 
                 # z: (N, 1, 784)
                 z = torch.randn((num_samples, 1, 784)).to(device) if t > 1 else torch.zeros((num_samples, 1, 784), dtype = torch.float32).to(device)
 
-                # time_embedded_xt: (N, 1, 784)
+                # time_embedded_xt: (1, 784)
                 time_embedded_xt = xt + self.sinusoidal_embedding(t)
 
                 z = z.reshape(-1, 1, 28, 28)
                 xt = xt.reshape(-1, 1, 28, 28)
                 time_embedded_xt = time_embedded_xt.reshape(-1, 1, 28, 28)
 
-                xt = 1 / (torch.sqrt(self.alphas[t - 1])) * (xt - (1 - self.alphas[t - 1]) / (torch.sqrt(1 - self.alpha_bars[t - 1])) * self.forward(time_embedded_xt)) + self.sigma[t - 1] * z
+                noise_predicted = self.forward(time_embedded_xt)
+                noises_predicted.append(torch.norm(noise_predicted.clone()))
+
+                xt = 1 / (torch.sqrt(self.alphas[t - 1])) * (xt - (1 - self.alphas[t - 1]) / (torch.sqrt(1 - self.alpha_bars[t - 1])) * noise_predicted) + self.sigma[t - 1] * z
                 denoising_process.append(xt.clone())
+
+            #print(len(predicted_noises))
+            plt.plot(noises_predicted)
+            plt.show()
 
             return xt, denoising_process
