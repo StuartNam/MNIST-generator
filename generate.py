@@ -14,14 +14,18 @@ model = DiffusionModel(NUM_TIMESTEPS).to(device)
 
 model.load_state_dict(torch.load(MODEL_STATE_DICT_PATH, map_location = torch.device(device)))
 
-x0, results = model.sample(1)
+x0 = model.sample()
 
 x0 = scale_up(x0)
-results = [scale_up(result) for result in results]
 
-results = [Image.fromarray(frame.reshape(28, 28).numpy(), mode = 'L') for frame in results]
-results += [results[-1] for _ in range(0, 10)]
-results[0].save(RESULT_PATH + 'sample.gif', format = 'GIF', append_images = results[1:], save_all = True, duration = 100, loop = 0)
+plt.imshow(x0, cmap = 'gray')
+plt.show()
+
+#results = [scale_up(result) for result in results]
+
+#results = [Image.fromarray(frame.reshape(28, 28).numpy(), mode = 'L') for frame in results]
+#results += [results[-1] for _ in range(0, 10)]
+#results[0].save(RESULT_PATH + 'sample.gif', format = 'GIF', append_images = results[1:], save_all = True, duration = 100, loop = 0)
 
 # fig = plt.figure()
 

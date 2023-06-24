@@ -14,7 +14,7 @@ from config import *
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 print("Device =", device)
-(train_X, train_Y), (test_X, test_Y) = mnist.load_data()
+(train_x, train_y), (test_x, test_y) = mnist.load_data()
 
 class MNISTDataset(Dataset):
     def __init__(self, data):
@@ -36,9 +36,9 @@ def scale_up(x):
 
     return x
 
-train_X = scale_down(train_X)
+train_x = scale_down(train_x)
 
-train_dataset = MNISTDataset(torch.from_numpy(train_X).to(torch.float32).to(device))
+train_dataset = MNISTDataset(torch.from_numpy(train_x).to(DTYPE).to(device))
 dataloader = DataLoader(
     dataset = train_dataset, 
     batch_size = BATCH_SIZE, 
@@ -46,74 +46,47 @@ dataloader = DataLoader(
 )
      
 # Define model
-model = DiffusionModel(NUM_TIMESTEPS).to(device)
+model = DiffusionModel(NUM_TIMESTEPS)
 
 # Loss function
-mse_loss = nn.functional.mse_loss
+loss_fn = nn.MSELoss()
 
 # Optimizer
 optimizer = optim.Adam(
-    model.parameters(),
+    model.noise_estimator.parameters(),
     lr = LEARNING_RATE
 )
 
 # Training loop
 num_batches = math.ceil(len(dataloader.dataset) / BATCH_SIZE)
 
-model.train()
-for epoch in range(NUM_EPOCHS):
-    for batch_no, batch in enumerate(dataloader):
-        optimizer.zero_grad()
-        # batch: (batch_size, 28, 28)
-        batch = batch.reshape(-1, 1, 784)
-        xt, true_noise, t = model.noise_sample(batch)
-        xt += model.sinusoidal_embedding(t)
-        
-        xt = xt.reshape(-1, 1, 28, 28)
-        true_noise = true_noise.reshape(-1, 1, 28, 28)
-        
-        predicted_noise = model.forward(xt)
+model.noise_estimator.train()
 
-        loss = mse_loss(true_noise, predicted_noise)
-        loss.backward()
+for epoch in range(NUM_EPOCHS):
+    for batch_no, x0 in enumerate(dataloader):
+        # x0: (N, 1, 784)
+        x0 = x0.reshape(-1, 1, 784)
+        xt, epsilon, t = model.noise_sample(x0)
         
+        xt_with_t_embedded = model.sinusoidal_embed(xt, t)
+
+        xt_with_t_embedded = xt_with_t_embedded.reshape(-1, 1, 28, 28)
+        epsilon = epsilon.reshape(-1, 1, 28, 28)
+        
+        noise_predicted = model.noise_estimator(xt_with_t_embedded)
+
+        loss = loss_fn(epsilon, noise_predicted)
+
+        optimizer.zero_grad()
+        loss.backward()
         optimizer.step()
 
         if batch_no % 100 == 0:
-            print("Epoch {}/{}, Batch {}/{}: Loss = {}".format(epoch, NUM_EPOCHS, batch_no, num_batches, loss))
+            print("Epoch {}/{}, Batch {}/{}: Loss = {}".format(epoch + 1, NUM_EPOCHS, batch_no + 1, num_batches, loss))
 
-    # if epoch % 10 == 0:
-    #     x0, denoising_process = model.sample(1)
-
-    #     x0 = scale_up(x0)
-    #     denoising_process = [scale_up(result) for result in denoising_process]
-
-    #     fig = plt.figure()
-
-    #     def animate(i):
-    #         plt.imshow(denoising_process[i].cpu().reshape(28, 28), cmap = 'gray')
-
-    #     ani = animation.FuncAnimation(fig, animate, frames = len(denoising_process), interval = 50)
-
-    #     plt.show()
-    #     # fig, ax = plt.subplots()
-
-    #     # plot = ax.imshow(torch.zeros_like(denoising_process[0].reshape(28, 28)).cpu(), cmap = 'gray')
-
-    #     # def update(frame):
-    #     #     plot.set_data(denoising_process[frame].cpu().reshape(28, 28))
-    #     #     return plot,
-
-    #     # animation = FuncAnimation(fig, update, frames = len(denoising_process), interval = 50)
-
-    #     # plt.show()
-
-    #     # fig, axes = plt.subplots(10, 10)
-    #     # for i, axis in enumerate(axes.flat):
-    #     #     axis.imshow(denoising_process[i].reshape(28, 28), cmap = 'gray')
-
-    #     # plt.show()
-
-    #     model.train()
-
+    if epoch != 0 and epoch % 100 == 0:
+        choice = input("End training? (Y/N): ")
+        if choice == "Y":
+            break
+        
 torch.save(model.state_dict(), MODEL_STATE_DICT_PATH)
