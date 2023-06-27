@@ -14,11 +14,11 @@ model = DiffusionModel(NUM_TIMESTEPS).to(device)
 
 model.load_state_dict(torch.load(MODEL_STATE_DICT_PATH, map_location = torch.device(device)))
 
-x0 = model.sample()
+x0 = model.sample(1)
 
 x0 = scale_up(x0)
 
-plt.imshow(x0, cmap = 'gray')
+plt.imshow(x0.reshape(28, 28), cmap = 'gray')
 plt.show()
 
 #results = [scale_up(result) for result in results]

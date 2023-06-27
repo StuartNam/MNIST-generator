@@ -55,13 +55,11 @@ class UNet(nn.Module):
     def forward(self, x):
         # y_down_1: (N, 16, 14, 14)
         y_down_1 = self.down_block_1(x)
-        y_down_1_clone = y_down_1.clone()
-        y_down_1_clone.retain_grad()
+        y_down_1_clone = y_down_1
 
         # y_down_2: (N, 256, 7, 7)
         y_down_2 = self.down_block_2(y_down_1)
-        y_down_2_clone = y_down_2.clone()
-        y_down_2_clone.retain_grad()
+        y_down_2_clone = y_down_2
 
         # y_down_3: (N, 256, 7, 7)
         y_down_3 = self.bottle_neck(y_down_2)
@@ -85,8 +83,8 @@ class DiffusionModel():
         self.num_timesteps = num_timesteps
 
         self.betas = torch.linspace(
-            start = 0.0001, 
-            end = 0.02, 
+            start = 0.001, 
+            end = 0.09, 
             steps = num_timesteps,
             dtype = DTYPE,
             device = device
@@ -103,14 +101,18 @@ class DiffusionModel():
 
         self.noise_estimator = UNet().to(device)
 
-    def sinusoidal_embed(self, x, t):
+        # print(self.betas)
+        # print(self.alphas)
+        # print(self.alpha_bars)
+
+    def sinusoidal_embed(self, xt, t):
         """
-            Embed image xt with t to input into Noise Estimator
+            Embed image xt with t to input into noise_estimator(xt, t)
             In:
-            - x: (N, 1, 784)
+            - xt: (N, 1, 784)
             - t: int
             Out:
-            - x_with_t_embedded: (N, 1, 784)
+            - xt_with_t_embedded: (N, 1, 784)
         """
 
         t_encoded = torch.tensor(
@@ -119,46 +121,44 @@ class DiffusionModel():
             device = device
         )
 
-        t_encoded = t_encoded.reshape(1, 784)
+        t_encoded = t_encoded.reshape(1, 28, 28)
 
-        x_with_t_embedded = x + t_encoded
+        xt_with_t_embedded = xt + t_encoded
 
-        return x_with_t_embedded
+        return xt_with_t_embedded
         
-    def noise_sample(self, x0):
+    def sample_xt_from_x0(self, x0, t):
         """
             In:
-            - x0: (N, 1, 784)
-            Out:
-            - xt: (N, 1, 784)
-            - noise: (N, 1, 784)
+            - x0: (N, 1, 28, 28)
             - t: int
+            Out:
+            - xt: (N, 1, 28, 28)
+            - e: (N, 1, 28, 28)
         """
-
-        t = random.randint(1, self.num_timesteps)
         
-        # epsilon: (N, 1, 784)
-        epsilon = torch.randn_like(x0)
+        # epsilon: (N, 1, 28, 28)
+        e = torch.randn_like(x0)
 
-        # noise = (1 - self.alpha_bars[t - 1]) ** 0.5 * epsilon
-        xt = self.alpha_bars[t - 1] ** 0.5 * x0 + (1 - self.alpha_bars[t - 1]) ** 0.5 * epsilon
+        # Re-parameterization trick: xt = mu_xt + sqrt(var_xt) * e0
+        xt = self.alpha_bars[t - 1] ** 0.5 * x0 + (1 - self.alpha_bars[t - 1]) ** 0.5 * e
 
-        return xt, epsilon, t
+        return xt, e
         
-    def sample(self):
-        self.noise_esimator.eval()
+    def sample(self, N):
+        self.noise_estimator.eval()
         with torch.no_grad():
             xt = torch.randn(
-                size = (1, 1, 784),
+                size = (N, 1, 28, 28),
                 dtype = DTYPE,
                 device = device
             )
 
             for t in range(self.num_timesteps, 0, -1):
-                epsilon = torch.rand_like(xt)
-                noise_predicted = self.noise_esimator(self.sinusoidal_embed(xt, t))
+                z = torch.rand_like(xt)
+                noise_predicted = self.noise_estimator(self.sinusoidal_embed(xt, t))
 
-                xt = 1 / self.alphas[t - 1] ** 0.5 * (xt - (1 - self.alphas[t - 1]) / (1 - self.alpha_bars[t - 1]) ** 0.5 * noise_predicted) + self.sigma[t - 1] * epsilon
+                xt = 1 / self.alphas[t - 1] ** 0.5 * (xt - (1 - self.alphas[t - 1]) / (1 - self.alpha_bars[t - 1]) ** 0.5 * noise_predicted) + self.sigma[t - 1] * z
 
             return xt
 

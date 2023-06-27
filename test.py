@@ -1,10 +1,14 @@
 import torch
 import math
-t = 100
 
+sum = 0
+for i in range(100000):
+    a = torch.randn(784)
+    b = torch.randn(784)
 
-print(torch.linspace(
-            start = 0.0001, 
-            end = 0.02, 
-            steps = 100,
-        ).shape)
+    sum += (a - b) ** 2
+
+sum /= 100000
+
+print(sum)
+
