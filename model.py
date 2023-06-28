@@ -109,10 +109,10 @@ class DiffusionModel():
         """
             Embed image xt with t to input into noise_estimator(xt, t)
             In:
-            - xt: (N, 1, 784)
+            - xt: (N, 1, 28, 28)
             - t: int
             Out:
-            - xt_with_t_embedded: (N, 1, 784)
+            - xt_with_t_embedded: (N, 1, 28, 28)
         """
 
         t_encoded = torch.tensor(
@@ -154,13 +154,16 @@ class DiffusionModel():
                 device = device
             )
 
+            xT_0 = [xt]
             for t in range(self.num_timesteps, 0, -1):
                 z = torch.rand_like(xt)
                 noise_predicted = self.noise_estimator(self.sinusoidal_embed(xt, t))
 
                 xt = 1 / self.alphas[t - 1] ** 0.5 * (xt - (1 - self.alphas[t - 1]) / (1 - self.alpha_bars[t - 1]) ** 0.5 * noise_predicted) + self.sigma[t - 1] * z
 
-            return xt
+                xT_0.append(xt)
+
+            return xt, xT_0
 
 class ConvBlock(nn.Module):
     def __init__(self, num_convlayers, num_in_channels, channels_scale):
