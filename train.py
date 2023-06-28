@@ -35,67 +35,97 @@ dataloader = DataLoader(
 )
      
 # Define model
-model = DiffusionModel(NUM_TIMESTEPS)
+model = DiffusionModel(NUM_TIMESTEPS, DTYPE)
 
 # Loss function
 loss_fn = nn.MSELoss()
 
 # Optimizer
-optimizer = torch.optim.Adam(
-    model.noise_estimator.parameters(),
+optimizer1 = torch.optim.Adam(
+    model.noise_estimator1.parameters(),
+    lr = LEARNING_RATE
+)
+
+optimizer2 = torch.optim.Adam(
+    model.noise_estimator2.parameters(),
+    lr = LEARNING_RATE
+)
+
+optimizer3 = torch.optim.Adam(
+    model.noise_estimator3.parameters(),
+    lr = LEARNING_RATE
+)
+
+optimizer4 = torch.optim.Adam(
+    model.noise_estimator4.parameters(),
     lr = LEARNING_RATE
 )
 
 # Training loop
 num_batches = math.ceil(len(dataloader.dataset) / BATCH_SIZE)
 
-model.noise_estimator.train()
+model.train()
+for epoch_no in range(NUM_EPOCHS):
+    if (epoch_no + 1) % 100 == 0:
+        choice = input("End training? (Y/N): ")
+        if choice == "Y":
+            break
 
-for epoch in range(NUM_EPOCHS):
     for batch_no, x0 in enumerate(dataloader):
-        # t = random.randint(1, NUM_TIMESTEPS)
-        t = 50
-        xt, e = model.sample_xt_from_x0(x0, t)
+        # Report
+        if (epoch_no + 1) % 5 == 0 and batch_no == 0:
+            model.eval()
+            with torch.no_grad():
+                test_x0 = x0[0]
+                _, axes = plt.subplots(10, 10)
+                for t in range(1, NUM_TIMESTEPS):
+                    test_xt, e = model.sample_xt_from_x0(test_x0, t)
+                    xt_and_e = torch.cat([xt, e], dim = 3)
 
-        xt_with_t_embedded = model.sinusoidal_embed(xt, t)
-      
-        noise_predicted = model.noise_estimator(xt_with_t_embedded)
+                    axes[t // 10, t % 10].imshow(xt_and_e.reshape(28, 56).cpu(), cmap = 'gray')
+                
+                plt.show()
 
-        loss = loss_fn(e, noise_predicted)
+                test_x0, test_xT_0 = model.sample(1)
 
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-        if batch_no == 0:
-            fig, axes = plt.subplots(1, 2)
-            fig.canvas.manager.set_window_title(t)
-            
-            axes[0].imshow(e[0].reshape(28, 28), cmap = "gray")
-            axes[1].imshow(noise_predicted[0].detach().numpy().reshape(28, 28), cmap = "gray")
-            
-            plt.show()
-
-            model.noise_estimator.eval()
+            model.eval()
             with torch.no_grad():
                 test_x0 = model.sample(10)
                 test_x0 = scale_up(test_x0)
 
-                _, axes = plt.subplots(1, 10)
-                
-                for i in range(10):
-                    axes[i].imshow(test_x0[i].reshape(28, 28), cmap = "gray")
-                
+                test_x0 = scale_up(test_x0).reshape(28, 28)
+                test_xT_0 = [scale_up(xt).reshape(28, 28) for xt in test_xT_0]
+
+                imshow_imgs(test_xT_0)
+
+                plt.imshow(test_x0, cmap = 'gray')
                 plt.show()
                 
-            model.noise_estimator.train()
+            model.train()
+
+        t = random.randint(1, NUM_TIMESTEPS)
+
+        xt, e = model.sample_xt_from_x0(x0, t)
+
+        xt_with_t_embedded = model.sinusoidal_embed(xt, t)
+      
+        noise_predicted = model.predict_noise(xt_with_t_embedded, t)
+
+        loss = loss_fn(e, noise_predicted)
+       
+        optimizer1.zero_grad()
+        optimizer2.zero_grad()
+        optimizer3.zero_grad()
+        optimizer4.zero_grad()
+
+        loss.backward()
+
+        optimizer1.step()
+        optimizer2.step()
+        optimizer3.step()
+        optimizer4.step()
 
         if batch_no % 100 == 0:
-            print("Epoch {}/{}, Batch {}/{}: loss = {}".format(epoch + 1, NUM_EPOCHS, batch_no + 1, num_batches, loss))
-
-    if epoch != 0 and epoch % 100 == 0:
-        choice = input("End training? (Y/N): ")
-        if choice == "Y":
-            break
+            print("Epoch {}/{}, Batch {}/{}: loss = {}, at timestep {}".format(epoch_no + 1, NUM_EPOCHS, batch_no + 1, num_batches, loss, t))
         
-torch.save(model.state_dict(), MODEL_STATE_DICT_PATH)
+model.save()

@@ -4,7 +4,7 @@ import torch.nn as nn
 import matplotlib.pyplot as plt
 
 import math
-import random
+
 import numpy as np
 from config import *
 
@@ -16,19 +16,21 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 #======================================================================================#
 
 class UNet(nn.Module):
-    def __init__(self):
+    def __init__(self, dtype):
         super().__init__()
         
         self.down_block_1 = ConvBlock(
             num_convlayers = 2,
             num_in_channels = 1,
-            channels_scale = 4
+            channels_scale = 4,
+            dtype = dtype
         )
 
         self.down_block_2 = ConvBlock(
             num_convlayers = 2,
             num_in_channels = 16,
-            channels_scale = 4
+            channels_scale = 4,
+            dtype = dtype
         )
 
         self.bottle_neck = nn.Conv2d(
@@ -36,20 +38,22 @@ class UNet(nn.Module):
             out_channels = 256,
             kernel_size = 3,
             padding = 1,
-            dtype = DTYPE
+            dtype = dtype
         )
 
         self.up_block_1 = ConvTranposeBlock(
             num_convlayers = 1,
             num_in_channels = 512,
-            num_out_channels = 16
+            num_out_channels = 16,
+            dtype = dtype
         )
 
         self.up_block_2 = ConvTranposeBlock(
             num_convlayers = 1,
             num_in_channels = 32,
             num_out_channels = 1,
-            out = True
+            out = True,
+            dtype = dtype
         )
 
     def forward(self, x):
@@ -79,14 +83,14 @@ class UNet(nn.Module):
         return y_up_2
     
 class DiffusionModel():
-    def __init__(self, num_timesteps):
+    def __init__(self, num_timesteps, dtype):
         self.num_timesteps = num_timesteps
 
         self.betas = torch.linspace(
             start = 0.001, 
             end = 0.09, 
             steps = num_timesteps,
-            dtype = DTYPE,
+            dtype = dtype,
             device = device
         )
 
@@ -94,16 +98,16 @@ class DiffusionModel():
         self.alpha_bars = torch.cumprod(
             self.alphas, 
             dim = 0, 
-            dtype = DTYPE
+            dtype = dtype
         )
 
         self.sigma = torch.sqrt(self.betas)
 
-        self.noise_estimator = UNet().to(device)
+        self.noise_estimator1 = UNet(dtype).to(device)
+        self.noise_estimator2 = UNet(dtype).to(device)
+        self.noise_estimator3 = UNet(dtype).to(device)
+        self.noise_estimator4 = UNet(dtype).to(device)
 
-        # print(self.betas)
-        # print(self.alphas)
-        # print(self.alpha_bars)
 
     def sinusoidal_embed(self, xt, t):
         """
@@ -144,9 +148,19 @@ class DiffusionModel():
         xt = self.alpha_bars[t - 1] ** 0.5 * x0 + (1 - self.alpha_bars[t - 1]) ** 0.5 * e
 
         return xt, e
+    
+    def predict_noise(self, xt_embedded_with_t, t):
+        if t in range(1, 26):
+            return self.noise_estimator1(xt_embedded_with_t) 
+        elif t in range(26, 51):
+            return self.noise_estimator2(xt_embedded_with_t) 
+        elif t in range(51, 76):
+            return self.noise_estimator3(xt_embedded_with_t) 
+        elif t in range(76, 101):
+            return self.noise_estimator4(xt_embedded_with_t) 
         
     def sample(self, N):
-        self.noise_estimator.eval()
+        self.eval()
         with torch.no_grad():
             xt = torch.randn(
                 size = (N, 1, 28, 28),
@@ -157,7 +171,17 @@ class DiffusionModel():
             xT_0 = [xt]
             for t in range(self.num_timesteps, 0, -1):
                 z = torch.rand_like(xt)
-                noise_predicted = self.noise_estimator(self.sinusoidal_embed(xt, t))
+
+                noise_predicted = 0
+
+                if t in range(1, 26):
+                    noise_predicted = self.noise_estimator1(self.sinusoidal_embed(xt, t))
+                elif t in range(26, 51):
+                    noise_predicted = self.noise_estimator2(self.sinusoidal_embed(xt, t))
+                elif t in range(51, 76):
+                    noise_predicted = self.noise_estimator3(self.sinusoidal_embed(xt, t))
+                elif t in range(76, 101):
+                    noise_predicted = self.noise_estimator4(self.sinusoidal_embed(xt, t))
 
                 xt = 1 / self.alphas[t - 1] ** 0.5 * (xt - (1 - self.alphas[t - 1]) / (1 - self.alpha_bars[t - 1]) ** 0.5 * noise_predicted) + self.sigma[t - 1] * z
 
@@ -165,8 +189,26 @@ class DiffusionModel():
 
             return xt, xT_0
 
+    def train(self):
+        self.noise_estimator1.train()
+        self.noise_estimator2.train()
+        self.noise_estimator3.train()
+        self.noise_estimator4.train()
+
+    def eval(self):
+        self.noise_estimator1.eval()
+        self.noise_estimator2.eval()
+        self.noise_estimator3.eval()
+        self.noise_estimator4.eval()
+
+    def save(self):
+        torch.save(self.noise_estimator1.state_dict(), MODEL_FOLDER + TEMPORARY1_FILE)
+        torch.save(self.noise_estimator2.state_dict(), MODEL_FOLDER + TEMPORARY2_FILE)
+        torch.save(self.noise_estimator3.state_dict(), MODEL_FOLDER + TEMPORARY3_FILE)
+        torch.save(self.noise_estimator4.state_dict(), MODEL_FOLDER + TEMPORARY4_FILE)
+
 class ConvBlock(nn.Module):
-    def __init__(self, num_convlayers, num_in_channels, channels_scale):
+    def __init__(self, num_convlayers, num_in_channels, channels_scale, dtype):
         super().__init__()
 
         self.layers = nn.Sequential()
@@ -179,7 +221,7 @@ class ConvBlock(nn.Module):
                     out_channels = num_in_channels * (channels_scale ** (i + 1)),
                     kernel_size = 3,
                     padding = 1,
-                    dtype = DTYPE
+                    dtype = dtype
                 )
             )
         
@@ -187,7 +229,7 @@ class ConvBlock(nn.Module):
             name = "BN",
             module = nn.BatchNorm2d(
                 num_features = num_in_channels * (channels_scale ** num_convlayers),
-                dtype = DTYPE
+                dtype = dtype
             )
         )
 
@@ -208,7 +250,7 @@ class ConvBlock(nn.Module):
         return self.layers(x)
 
 class ConvTranposeBlock(nn.Module):
-    def __init__(self, num_in_channels, num_out_channels, num_convlayers, out = False):
+    def __init__(self, num_in_channels, num_out_channels, num_convlayers, dtype, out = False):
         super().__init__()
 
         self.layers = nn.Sequential()
@@ -221,7 +263,7 @@ class ConvTranposeBlock(nn.Module):
                     out_channels = num_in_channels,
                     kernel_size = 2,
                     stride = 2,
-                    dtype = DTYPE
+                    dtype = dtype
                 )
             )
         
@@ -231,7 +273,7 @@ class ConvTranposeBlock(nn.Module):
                 in_channels = num_in_channels,
                 out_channels = num_out_channels,
                 kernel_size = 1,
-                dtype = DTYPE
+                dtype = dtype
             )
         )
 
@@ -239,7 +281,7 @@ class ConvTranposeBlock(nn.Module):
             name = "BN",
             module = nn.BatchNorm2d(
                 num_features = num_out_channels,
-                dtype = DTYPE
+                dtype = dtype
             )
         )
 

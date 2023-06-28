@@ -1,43 +1,29 @@
 import torch
 
 import matplotlib.pyplot as plt
-import matplotlib.animation as animation
-import PIL.Image as Image
 
-from model import DiffusionModel
+from model import *
 from config import *
 from utils import *
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-model = DiffusionModel(NUM_TIMESTEPS).to(device)
+model = DiffusionModel(NUM_TIMESTEPS)
 
-model.load_state_dict(torch.load(MODEL_STATE_DICT_PATH, map_location = torch.device(device)))
+model.noise_estimator1.load_state_dict(torch.load(MODEL_FOLDER + MODEL1_FILE, map_location = torch.device(device)))
+model.noise_estimator2.load_state_dict(torch.load(MODEL_FOLDER + MODEL1_FILE, map_location = torch.device(device)))
+model.noise_estimator3.load_state_dict(torch.load(MODEL_FOLDER + MODEL1_FILE, map_location = torch.device(device)))
+model.noise_estimator4.load_state_dict(torch.load(MODEL_FOLDER + MODEL1_FILE, map_location = torch.device(device)))
 
-x0 = model.sample(1)
+model.eval()
+with torch.no_grad():
+    x0, xT_0 = model.sample(1)
 
-x0 = scale_up(x0)
+    x0 = scale_up(x0).reshape(28, 28)
+    xT_0 = [scale_up(xt).reshape(28, 28) for xt in xT_0]
 
-plt.imshow(x0.reshape(28, 28), cmap = 'gray')
-plt.show()
+    imshow_imgs(xT_0)
 
-#results = [scale_up(result) for result in results]
+    plt.imshow(x0, cmap = 'gray')
+    plt.show()
 
-#results = [Image.fromarray(frame.reshape(28, 28).numpy(), mode = 'L') for frame in results]
-#results += [results[-1] for _ in range(0, 10)]
-#results[0].save(RESULT_PATH + 'sample.gif', format = 'GIF', append_images = results[1:], save_all = True, duration = 100, loop = 0)
-
-# fig = plt.figure()
-
-# def animate(i):
-#     plt.imshow(denoising_process[i].cpu().reshape(28, 28), cmap = 'gray')
-
-# ani = animation.FuncAnimation(fig, animate, frames = len(denoising_process), interval = 25)
-
-# plt.show()
-
-# fig, axes = plt.subplots(5, 10)
-# for i, axis in enumerate(axes.flat):
-#     axis.imshow(results[i].reshape(28, 28).cpu(), cmap = 'gray')
-
-# plt.show()
